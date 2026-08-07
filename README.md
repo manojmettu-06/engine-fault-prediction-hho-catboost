@@ -7,6 +7,11 @@
 
 ---
 
+
+## 🚀 Live Demo
+
+https://engine-fault-prediction-hho-catboost-cgpf8f8g8pojdrtxk5ptcc.streamlit.app/
+
 # 📌 Project Overview
 
 This project presents an intelligent **Engine Fault Prediction and Maintenance Decision Support System** using a **CatBoost Classifier** optimized with the **Harris Hawks Optimization (HHO)** algorithm.
