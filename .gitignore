@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.pyc
+
+catboost_info/
+
+models/*.pkl
+
+.idea/
+.vscode/
+
+*.log
