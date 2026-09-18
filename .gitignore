@@ -8,4 +8,5 @@ catboost_info/
 .idea/
 .vscode/
 
-*.log
+*.logappbackup.py
+appbackup.py
