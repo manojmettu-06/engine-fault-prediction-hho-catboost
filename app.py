@@ -4,7 +4,6 @@ import numpy as np
 import joblib
 import matplotlib.pyplot as plt
 
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
@@ -14,9 +13,8 @@ from sklearn.metrics import (
     classification_report
 )
 
-
 # =========================================================
-# PAGE CONFIGURATION
+# PAGE CONFIG
 # =========================================================
 
 st.set_page_config(
@@ -25,365 +23,394 @@ st.set_page_config(
     layout="wide"
 )
 
-
-# =========================================================
-# TITLE
-# =========================================================
-
 st.title("⚙️ Engine Fault Prediction System")
 
 st.write(
-    "HHO Optimized CatBoost based Engine Fault Prediction "
-    "and Maintenance Recommendation System"
+    "Upload an engine sensor CSV file to predict engine condition "
+    "using CatBoost."
 )
 
 st.divider()
 
 
 # =========================================================
-# LOAD DATASET AND MODEL
+# LOAD MODEL
 # =========================================================
 
-DATA_PATH = "dataset/engine_fault_detection_dataset.csv"
 MODEL_PATH = "models/baseline_catboost.pkl"
 
-df = pd.read_csv(DATA_PATH)
-model = joblib.load(MODEL_PATH)
+try:
+    model = joblib.load(MODEL_PATH)
+except Exception as e:
+    st.error(f"Unable to load model: {e}")
+    st.stop()
 
 
 # =========================================================
-# FEATURES AND TARGET
+# REQUIRED FEATURES
 # =========================================================
 
-X = df.drop("Engine_Condition", axis=1)
-y = df["Engine_Condition"]
-
-
-# =========================================================
-# TRAIN TEST SPLIT
-# =========================================================
-
-X_train, X_test, y_train, y_test = train_test_split(
-    X,
-    y,
-    test_size=0.20,
-    random_state=42,
-    stratify=y
-)
+FEATURES = [
+    "Vibration_Amplitude",
+    "RMS_Vibration",
+    "Vibration_Frequency",
+    "Surface_Temperature",
+    "Exhaust_Temperature",
+    "Acoustic_dB",
+    "Acoustic_Frequency",
+    "Intake_Pressure",
+    "Exhaust_Pressure",
+    "Frequency_Band_Energy",
+    "Amplitude_Mean"
+]
 
 
 # =========================================================
-# MODEL EVALUATION
+# CSV UPLOAD
 # =========================================================
 
-y_pred = model.predict(X_test)
+st.header("📁 Upload Engine Dataset")
 
-y_pred = np.array(y_pred).flatten()
-
-accuracy = accuracy_score(y_test, y_pred)
-
-precision = precision_score(
-    y_test,
-    y_pred,
-    average="weighted",
-    zero_division=0
+uploaded_file = st.file_uploader(
+    "Upload CSV file",
+    type=["csv"]
 )
 
-recall = recall_score(
-    y_test,
-    y_pred,
-    average="weighted",
-    zero_division=0
+
+if uploaded_file is None:
+
+    st.info(
+        "Please upload a CSV file containing the required engine "
+        "sensor parameters."
+    )
+
+    st.write("### Required columns")
+
+    for feature in FEATURES:
+        st.write(f"• {feature}")
+
+    st.write("Optional column for evaluation:")
+
+    st.write("• Engine_Condition")
+
+    st.stop()
+
+
+# =========================================================
+# READ CSV
+# =========================================================
+
+try:
+
+    data = pd.read_csv(uploaded_file)
+
+except Exception as e:
+
+    st.error(f"Unable to read CSV file: {e}")
+    st.stop()
+
+
+st.success("CSV file uploaded successfully!")
+
+st.subheader("📋 Uploaded Dataset")
+
+st.write(
+    f"Rows: **{data.shape[0]}** | "
+    f"Columns: **{data.shape[1]}**"
 )
 
-f1 = f1_score(
-    y_test,
-    y_pred,
-    average="weighted",
-    zero_division=0
+st.dataframe(
+    data.head(10),
+    width="stretch"
 )
 
 
 # =========================================================
-# SIDEBAR - SENSOR INPUT
+# CHECK FEATURES
 # =========================================================
 
-st.sidebar.header("🔧 Engine Sensor Parameters")
+missing_features = [
+    feature for feature in FEATURES
+    if feature not in data.columns
+]
 
-vibration_amplitude = st.sidebar.number_input(
-    "Vibration Amplitude",
-    value=float(X["Vibration_Amplitude"].mean())
-)
 
-rms_vibration = st.sidebar.number_input(
-    "RMS Vibration",
-    value=float(X["RMS_Vibration"].mean())
-)
+if missing_features:
 
-vibration_frequency = st.sidebar.number_input(
-    "Vibration Frequency",
-    value=float(X["Vibration_Frequency"].mean())
-)
+    st.error("The uploaded CSV is missing required columns:")
 
-surface_temperature = st.sidebar.number_input(
-    "Surface Temperature",
-    value=float(X["Surface_Temperature"].mean())
-)
+    for feature in missing_features:
+        st.write(f"❌ {feature}")
 
-exhaust_temperature = st.sidebar.number_input(
-    "Exhaust Temperature",
-    value=float(X["Exhaust_Temperature"].mean())
-)
+    st.stop()
 
-acoustic_db = st.sidebar.number_input(
-    "Acoustic dB",
-    value=float(X["Acoustic_dB"].mean())
-)
 
-acoustic_frequency = st.sidebar.number_input(
-    "Acoustic Frequency",
-    value=float(X["Acoustic_Frequency"].mean())
-)
+# =========================================================
+# PREPARE INPUT DATA
+# =========================================================
 
-intake_pressure = st.sidebar.number_input(
-    "Intake Pressure",
-    value=float(X["Intake_Pressure"].mean())
-)
+X = data[FEATURES].copy()
 
-exhaust_pressure = st.sidebar.number_input(
-    "Exhaust Pressure",
-    value=float(X["Exhaust_Pressure"].mean())
-)
 
-frequency_band_energy = st.sidebar.number_input(
-    "Frequency Band Energy",
-    value=float(X["Frequency_Band_Energy"].mean())
-)
+# =========================================================
+# HANDLE MISSING VALUES
+# =========================================================
 
-amplitude_mean = st.sidebar.number_input(
-    "Amplitude Mean",
-    value=float(X["Amplitude_Mean"].mean())
-)
+if X.isnull().sum().sum() > 0:
+
+    st.warning(
+        "Missing values detected. They will be replaced "
+        "using column mean values."
+    )
+
+    X = X.fillna(X.mean())
 
 
 # =========================================================
 # PREDICTION
 # =========================================================
 
-input_data = pd.DataFrame({
-    "Vibration_Amplitude": [vibration_amplitude],
-    "RMS_Vibration": [rms_vibration],
-    "Vibration_Frequency": [vibration_frequency],
-    "Surface_Temperature": [surface_temperature],
-    "Exhaust_Temperature": [exhaust_temperature],
-    "Acoustic_dB": [acoustic_db],
-    "Acoustic_Frequency": [acoustic_frequency],
-    "Intake_Pressure": [intake_pressure],
-    "Exhaust_Pressure": [exhaust_pressure],
-    "Frequency_Band_Energy": [frequency_band_energy],
-    "Amplitude_Mean": [amplitude_mean]
-})
+try:
 
+    predictions = model.predict(X)
 
-if st.sidebar.button("🔍 Predict Engine Condition"):
+    predictions = np.array(predictions).flatten()
 
-    prediction = model.predict(input_data)
+except Exception as e:
 
-    prediction = int(np.array(prediction).flatten()[0])
-
-
-    # =====================================================
-    # ENGINE CONDITION
-    # =====================================================
-
-    st.subheader("🚨 Engine Condition Prediction")
-
-    if prediction == 0:
-
-        condition = "NORMAL"
-
-        st.success(
-            f"Predicted Engine Condition: {condition}"
-        )
-
-    elif prediction == 1:
-
-        condition = "MINOR FAULT"
-
-        st.warning(
-            f"Predicted Engine Condition: {condition}"
-        )
-
-    else:
-
-        condition = "CRITICAL FAULT"
-
-        st.error(
-            f"Predicted Engine Condition: {condition}"
-        )
-
-
-    # =====================================================
-    # MAINTENANCE RECOMMENDATION
-    # =====================================================
-
-    st.subheader("🔧 Maintenance Recommendation")
-
-    if prediction == 0:
-
-        st.success(
-            "✓ Engine operating normally.\n\n"
-            "• Continue routine maintenance.\n\n"
-            "• Monitor sensor readings periodically.\n\n"
-            "• Perform scheduled inspections."
-        )
-
-    elif prediction == 1:
-
-        st.warning(
-            "⚠ Minor fault detected.\n\n"
-            "• Inspect relevant engine components.\n\n"
-            "• Increase monitoring frequency.\n\n"
-            "• Schedule maintenance at the earliest suitable opportunity."
-        )
-
-    else:
-
-        st.error(
-            "🚨 Critical fault detected.\n\n"
-            "• Immediate inspection is recommended.\n\n"
-            "• Check critical engine components.\n\n"
-            "• Avoid continued operation until the fault is assessed."
-        )
-
-
-    st.divider()
+    st.error(f"Prediction failed: {e}")
+    st.stop()
 
 
 # =========================================================
-# MODEL PERFORMANCE
+# PREDICTION RESULTS
 # =========================================================
 
-st.subheader("📊 Model Performance")
+st.divider()
 
-col1, col2, col3, col4 = st.columns(4)
+st.header("🚨 Prediction Results")
+
+
+condition_names = {
+    0: "NORMAL",
+    1: "MINOR FAULT",
+    2: "CRITICAL FAULT"
+}
+
+
+result_data = data.copy()
+
+result_data["Predicted_Engine_Condition"] = [
+    condition_names.get(int(p), str(p))
+    for p in predictions
+]
+
+
+# =========================================================
+# DISPLAY CONDITION COUNTS
+# =========================================================
+
+prediction_counts = pd.Series(
+    [
+        condition_names.get(int(p), str(p))
+        for p in predictions
+    ]
+).value_counts()
+
+
+col1, col2, col3 = st.columns(3)
+
 
 col1.metric(
-    "Accuracy",
-    f"{accuracy * 100:.2f}%"
+    "Normal",
+    prediction_counts.get("NORMAL", 0)
 )
 
 col2.metric(
-    "Precision",
-    f"{precision * 100:.2f}%"
+    "Minor Fault",
+    prediction_counts.get("MINOR FAULT", 0)
 )
 
 col3.metric(
-    "Recall",
-    f"{recall * 100:.2f}%"
-)
-
-col4.metric(
-    "F1-Score",
-    f"{f1 * 100:.2f}%"
+    "Critical Fault",
+    prediction_counts.get("CRITICAL FAULT", 0)
 )
 
 
-st.divider()
+st.subheader("Prediction Table")
+
+st.dataframe(
+    result_data,
+    width="stretch"
+)
 
 
 # =========================================================
-# CONFUSION MATRIX
+# EVALUATION
 # =========================================================
 
-st.subheader("🔲 Confusion Matrix")
+if "Engine_Condition" in data.columns:
 
-cm = confusion_matrix(y_test, y_pred)
+    st.divider()
 
-fig, ax = plt.subplots()
+    st.header("📊 Model Performance")
 
-ax.imshow(cm)
+    y_true = data["Engine_Condition"]
 
-ax.set_xlabel("Predicted Label")
-ax.set_ylabel("Actual Label")
-ax.set_title("Engine Fault Confusion Matrix")
+    accuracy = accuracy_score(
+        y_true,
+        predictions
+    )
 
-ax.set_xticks([0, 1, 2])
-ax.set_yticks([0, 1, 2])
+    precision = precision_score(
+        y_true,
+        predictions,
+        average="weighted",
+        zero_division=0
+    )
 
-ax.set_xticklabels([
-    "Normal",
-    "Minor Fault",
-    "Critical Fault"
-])
+    recall = recall_score(
+        y_true,
+        predictions,
+        average="weighted",
+        zero_division=0
+    )
 
-ax.set_yticklabels([
-    "Normal",
-    "Minor Fault",
-    "Critical Fault"
-])
-
-
-for i in range(3):
-
-    for j in range(3):
-
-        ax.text(
-            j,
-            i,
-            cm[i, j],
-            ha="center",
-            va="center"
-        )
+    f1 = f1_score(
+        y_true,
+        predictions,
+        average="weighted",
+        zero_division=0
+    )
 
 
-st.pyplot(fig)
+    # -----------------------------------------------------
+    # METRICS
+    # -----------------------------------------------------
 
-plt.close(fig)
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric(
+        "Accuracy",
+        f"{accuracy * 100:.2f}%"
+    )
+
+    col2.metric(
+        "Precision",
+        f"{precision * 100:.2f}%"
+    )
+
+    col3.metric(
+        "Recall",
+        f"{recall * 100:.2f}%"
+    )
+
+    col4.metric(
+        "F1-Score",
+        f"{f1 * 100:.2f}%"
+    )
 
 
-st.divider()
+    # -----------------------------------------------------
+    # CONFUSION MATRIX
+    # -----------------------------------------------------
 
+    st.subheader("🔲 Confusion Matrix")
 
-# =========================================================
-# CLASSIFICATION REPORT
-# =========================================================
+    cm = confusion_matrix(
+        y_true,
+        predictions,
+        labels=[0, 1, 2]
+    )
 
-st.subheader("📋 Classification Report")
+    fig, ax = plt.subplots()
 
-report = classification_report(
-    y_test,
-    y_pred,
-    target_names=[
+    ax.imshow(cm)
+
+    ax.set_xlabel("Predicted Label")
+    ax.set_ylabel("Actual Label")
+    ax.set_title("Engine Fault Confusion Matrix")
+
+    ax.set_xticks([0, 1, 2])
+    ax.set_yticks([0, 1, 2])
+
+    ax.set_xticklabels([
         "Normal",
         "Minor Fault",
         "Critical Fault"
-    ],
-    output_dict=True,
-    zero_division=0
-)
+    ])
 
-report_df = pd.DataFrame(report).transpose()
+    ax.set_yticklabels([
+        "Normal",
+        "Minor Fault",
+        "Critical Fault"
+    ])
 
-st.dataframe(
-    report_df.round(4),
-    use_container_width=True
-)
+    for i in range(3):
+
+        for j in range(3):
+
+            ax.text(
+                j,
+                i,
+                cm[i, j],
+                ha="center",
+                va="center"
+            )
+
+    st.pyplot(fig)
+
+    plt.close(fig)
 
 
-st.divider()
+    # -----------------------------------------------------
+    # CLASSIFICATION REPORT
+    # -----------------------------------------------------
+
+    st.subheader("📋 Classification Report")
+
+    report = classification_report(
+        y_true,
+        predictions,
+        labels=[0, 1, 2],
+        target_names=[
+            "Normal",
+            "Minor Fault",
+            "Critical Fault"
+        ],
+        output_dict=True,
+        zero_division=0
+    )
+
+    report_df = pd.DataFrame(report).transpose()
+
+    st.dataframe(
+        report_df.round(4),
+        width="stretch"
+    )
+
+
+else:
+
+    st.info(
+        "Engine_Condition column was not found. "
+        "Predictions are available, but evaluation metrics "
+        "cannot be calculated without actual labels."
+    )
 
 
 # =========================================================
 # FEATURE IMPORTANCE
 # =========================================================
 
-st.subheader("🔍 Feature Importance")
+st.divider()
+
+st.header("🔍 Feature Importance")
 
 importance = model.get_feature_importance()
 
 feature_importance = pd.DataFrame({
-    "Feature": X.columns,
+    "Feature": FEATURES,
     "Importance": importance
 })
 
@@ -392,9 +419,10 @@ feature_importance = feature_importance.sort_values(
     ascending=False
 )
 
+
 st.dataframe(
     feature_importance.round(4),
-    use_container_width=True
+    width="stretch"
 )
 
 
@@ -423,37 +451,86 @@ st.pyplot(fig)
 plt.close(fig)
 
 
+# =========================================================
+# MAINTENANCE RECOMMENDATION
+# =========================================================
+
 st.divider()
 
+st.header("🔧 Maintenance Recommendation")
 
-# =========================================================
-# DATASET INFORMATION
-# =========================================================
 
-st.subheader("📁 Dataset Information")
-
-col1, col2, col3 = st.columns(3)
-
-col1.metric(
-    "Total Samples",
-    df.shape[0]
+critical_count = prediction_counts.get(
+    "CRITICAL FAULT",
+    0
 )
 
-col2.metric(
-    "Input Features",
-    X.shape[1]
+minor_count = prediction_counts.get(
+    "MINOR FAULT",
+    0
 )
 
-col3.metric(
-    "Output Classes",
-    y.nunique()
+normal_count = prediction_counts.get(
+    "NORMAL",
+    0
 )
 
 
-st.write(
-    "Dataset contains engine sensor parameters including "
-    "vibration, temperature, acoustic and pressure measurements."
-)
+if critical_count > 0:
+
+    st.error(
+        f"🚨 {critical_count} critical fault prediction(s) detected."
+    )
+
+    st.write(
+        "• Immediate inspection is recommended."
+    )
+
+    st.write(
+        "• Check critical engine components."
+    )
+
+    st.write(
+        "• Avoid continued operation until the fault is assessed."
+    )
+
+
+elif minor_count > 0:
+
+    st.warning(
+        f"⚠ {minor_count} minor fault prediction(s) detected."
+    )
+
+    st.write(
+        "• Inspect relevant engine components."
+    )
+
+    st.write(
+        "• Increase monitoring frequency."
+    )
+
+    st.write(
+        "• Schedule maintenance at the earliest suitable opportunity."
+    )
+
+
+else:
+
+    st.success(
+        f"✓ All {normal_count} prediction(s) indicate NORMAL operation."
+    )
+
+    st.write(
+        "• Continue routine maintenance."
+    )
+
+    st.write(
+        "• Monitor sensor readings periodically."
+    )
+
+    st.write(
+        "• Perform scheduled inspections."
+    )
 
 
 # =========================================================
@@ -463,5 +540,6 @@ st.write(
 st.divider()
 
 st.caption(
-    "Engine Fault Prediction using HHO and CatBoost"
+    "Engine Fault Prediction using CatBoost | "
+    "Predictive Maintenance Support System"
 )
